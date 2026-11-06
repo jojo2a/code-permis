@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code — entraînement</title>
+<style>
+  :root{--bg:#0f1115;--card:#171a21;--txt:#e8eaf0;--dim:#9aa3b2;--ok:#22c55e;--ko:#ef4444;--acc:#3b82f6}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt);padding:16px;padding-bottom:80px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px}
+  button{font:inherit;border:0;border-radius:10px;padding:12px 14px;background:#242a35;color:var(--txt);width:100%;text-align:left;margin-bottom:8px;cursor:pointer}
+  button:active{transform:scale(.99)}
+  .primary{background:var(--acc);color:#fff;text-align:center;font-weight:600}
+  .opt{border:1px solid #2b3240}
+  .opt.good{background:rgba(34,197,94,.18);border-color:var(--ok)}
+  .opt.bad{background:rgba(239,68,68,.18);border-color:var(--ko)}
+  .q{font-size:16px;line-height:1.4;margin-bottom:14px}
+  .meta{display:flex;justify-content:space-between;color:var(--dim);font-size:12px;margin-bottom:10px}
+  .explain{font-size:13px;line-height:1.5;color:#cdd3de;background:#12151b;border-left:3px solid var(--acc);padding:10px 12px;border-radius:8px;margin-top:10px}
+  .score{font-size:34px;font-weight:700;text-align:center;margin:8px 0}
+  .ok{color:var(--ok)} .ko{color:var(--ko)}
+  .list{font-size:13px;line-height:1.5;color:var(--dim)}
+  .bar{height:6px;background:#242a35;border-radius:3px;overflow:hidden;margin-bottom:14px}
+  .bar div{height:100%;background:var(--acc);width:0;transition:width .2s}
+</style>
+</head>
+<body>
+<h1>Code de la route</h1>
+<div class="sub">35 sur 40 pour être reçu. Tes erreurs sont enregistrées.</div>
+<div id="app"></div>
+
+<script>
+const Q = [
+ ["Panneaux","Un panneau triangulaire à bord rouge, pointe en haut, indique :",["Une interdiction","Un danger","Une obligation"],1,"Triangle = danger. Je ralentis et je me prépare."],
+ ["Panneaux","Un panneau rond à bord rouge sur fond blanc indique :",["Une interdiction","Un danger","Une obligation"],0,"Rond + bord rouge = interdiction."],
+ ["Panneaux","Un panneau rond bleu avec un symbole blanc indique :",["Un danger","Une interdiction","Une obligation"],2,"Bleu = obligation, je dois faire ce qui est dessiné."],
+ ["Panneaux","Un disque rouge barré d'une barre blanche signifie :",["Sens interdit dans ce sens","Circulation interdite dans les deux sens","Stationnement interdit"],0,"C'est le sens interdit."],
+ ["Panneaux","Devant un STOP, je dois :",["M'arrêter seulement s'il y a du trafic","M'arrêter à la limite de la chaussée, même si la voie est libre","Ralentir sans m'arrêter"],1,"L'arrêt est obligatoire, même seul au monde."],
+ ["Panneaux","Devant un « cédez le passage », je dois :",["M'arrêter systématiquement","Céder aux véhicules de la voie que j'aborde, sans arrêt obligatoire","Klaxonner pour signaler mon arrivée"],1,"Je cède, mais je ne suis pas obligé de m'arrêter si la voie est libre."],
+ ["Panneaux","Hors agglomération, un panneau de danger est implanté à :",["50 m","150 m","200 m"],1,"150 m hors agglomération, 50 m en ville."],
+ ["Panneaux","Un panneau « zone 30 » signifie :",["Vitesse conseillée 30","Vitesse maximale 30 jusqu'au panneau de sortie de zone","30 km/h seulement la nuit"],1,"La limitation tient sur toute la zone, jusqu'à la fin de zone."],
+ ["Panneaux","Un carré bleu avec un « P » blanc indique :",["Stationnement autorisé","Stationnement interdit","Parking payant obligatoire"],0,"Carré bleu = indication, ici le stationnement est autorisé."],
+ ["Panneaux","Un triangle avec une voiture et des traces de dérapage m'annonce :",["Une route glissante","Un virage","Un dos-d'âne"],0,"Chaussée glissante : je ralentis et j'augmente mes distances."],
+
+ ["Priorités","À une intersection sans aucun panneau ni marquage, la priorité est :",["À droite","À gauche","Au véhicule le plus rapide"],0,"Priorité à droite par défaut."],
+ ["Priorités","À un rond-point précédé d'un « cédez le passage », je dois :",["Céder aux véhicules déjà engagés venant de ma gauche","Passer en priorité","M'arrêter systématiquement"],0,"Les véhicules sur l'anneau ont la priorité."],
+ ["Priorités","Je sors d'un chemin de terre pour rejoindre une route :",["J'ai la priorité","Je dois céder le passage à tous les véhicules","Je klaxonne"],1,"Je débouche d'une voie non prioritaire, je cède."],
+ ["Priorités","Un véhicule de police arrive sirène et gyrophare allumés :",["Je maintiens ma trajectoire","Je facilite son passage en me rangeant","Je le suis pour gagner du temps"],1,"Je facilite toujours le passage des véhicules d'intervention."],
+ ["Priorités","En agglomération, un bus quitte son arrêt et met son clignotant :",["Je le laisse s'insérer","Je le dépasse vite","Je klaxonne"],0,"Je facilite la sortie du bus."],
+ ["Priorités","Face à un tramway, je dois :",["Le considérer comme prioritaire","Passer devant s'il est lent","Klaxonner pour qu'il s'arrête"],0,"Le tramway est toujours prioritaire."],
+ ["Priorités","À un carrefour avec un agent qui lève le bras, je dois :",["Suivre les panneaux","Obéir à l'agent","M'arrêter dans tous les cas"],1,"Les injonctions d'un agent priment sur les panneaux et les feux."],
+ ["Priorités","Sur une route à sens unique, un véhicule arrive de la gauche :",["Il a la priorité à droite","Aucune priorité à droite ne s'applique dans ce cas de figure classique : je vérifie le marquage","Je passe en premier systématiquement"],1,"La priorité à droite ne s'applique pas ainsi sur sens unique : c'est le marquage qui décide."],
+
+ ["Vitesse","En agglomération, la vitesse maximale est de :",["30 km/h","50 km/h","70 km/h"],1,"50 km/h par défaut en ville."],
+ ["Vitesse","Sur autoroute, par temps de pluie, la vitesse maximale est de :",["130 km/h","110 km/h","90 km/h"],1,"110 km/h sous la pluie, 130 par temps sec."],
+ ["Vitesse","Quand la visibilité est inférieure à 50 mètres, je roule au maximum à :",["70 km/h","50 km/h","30 km/h"],1,"50 km/h sur toutes les routes, y compris l'autoroute."],
+ ["Vitesse","La distance de sécurité se mesure en :",["Secondes","Mètres uniquement","Longueurs de véhicule uniquement"],0,"Deux secondes minimum, quel que soit l'âge du conducteur."],
+ ["Vitesse","Dans une zone de rencontre, la vitesse est limitée à :",["10 km/h","20 km/h","30 km/h"],1,"20 km/h, et les piétons y sont prioritaires."],
+ ["Vitesse","À 90 km/h, la distance parcourue pendant le temps de réaction d'une seconde est d'environ :",["15 m","25 m","40 m"],1,"90 km/h = 25 m par seconde."],
+ ["Vitesse","Une limitation à 70 km/h s'applique :",["Jusqu'au prochain panneau de limitation ou de fin","À toute la commune","Seulement de jour"],0,"Elle court jusqu'à un nouveau panneau ou une fin de limitation."],
+ ["Vitesse","Le régulateur de vitesse m'autorise à :",["Dépasser la limitation pour doubler","Maintenir une vitesse choisie dans la limite des règles","Rouler sans surveiller la route"],1,"Il maintient une vitesse, il ne donne aucun droit supplémentaire."],
+
+ ["Stationnement","Un arrêt se distingue du stationnement car :",["Le conducteur reste à proximité et peut repartir immédiatement","Le moteur tourne","Les feux de détresse sont allumés"],0,"L'arrêt est de courte durée, conducteur prêt à repartir."],
+ ["Stationnement","Stationner devant une bouche d'incendie est :",["Autorisé 5 minutes","Interdit, c'est très gênant","Autorisé la nuit"],1,"C'est un stationnement très gênant."],
+ ["Stationnement","En zone bleue, je dois :",["Payer à l'horodateur","Apposer un disque de stationnement","Ne pas stationner"],1,"Disque obligatoire, durée limitée."],
+ ["Stationnement","Stationner sur un passage piéton est :",["Toléré hors des heures de pointe","Très gênant, donc interdit","Autorisé si je reste dans le véhicule"],1,"Très gênant et dangereux."],
+ ["Stationnement","Pour une place en épi, la manœuvre la plus sûre est :",["En marche arrière","En marche avant","Peu importe"],0,"La marche arrière donne de la visibilité au départ."],
+ ["Stationnement","Sur une place réservée aux personnes handicapées, sans carte :",["Je peux m'arrêter 10 minutes","Le stationnement est interdit et sanctionné","Je peux me garer la nuit"],1,"Interdit, avec une amende élevée."],
+
+ ["Dépassement","En règle générale, on dépasse :",["Par la gauche","Par la droite","Par le côté le plus dégagé"],0,"Le dépassement se fait par la gauche."],
+ ["Dépassement","Je ne dépasse pas si :",["La visibilité est insuffisante","Le véhicule devant roule lentement","Je suis pressé"],0,"Sans visibilité, aucun dépassement."],
+ ["Dépassement","Pour dépasser un cycliste en agglomération, je laisse :",["1 mètre","50 centimètres","1,50 mètre"],0,"1 m en ville, 1,5 m hors agglomération."],
+ ["Dépassement","Une ligne continue signifie :",["Dépassement interdit","Dépassement autorisé","Dépassement autorisé aux heures creuses"],0,"Ligne continue = pas de franchissement."],
+ ["Dépassement","Je peux dépasser par la droite :",["Jamais","Si le véhicule devant tourne à gauche","Si je suis dans un embouteillage"],1,"Le dépassement par la droite est autorisé dans ce cas précis."],
+ ["Dépassement","À l'approche d'un passage à niveau, je :",["Ne dépasse pas","Dépasse rapidement","Klaxonne"],0,"On ne dépasse pas à l'approche d'un passage à niveau."],
+
+ ["Autoroute et ville","Par défaut, sur autoroute je roule :",["Sur la voie de droite","Sur la voie du milieu","Sur la voie de gauche"],0,"La voie de droite est la voie normale."],
+ ["Autoroute et ville","La bande d'arrêt d'urgence sert :",["À dépasser les bouchons","Uniquement en cas d'urgence ou de panne","À téléphoner"],1,"Interdite à la circulation et au stationnement ordinaire."],
+ ["Autoroute et ville","À l'entrée d'une autoroute, je dois :",["Céder le passage aux véhicules déjà engagés","Passer en priorité","M'arrêter sur la bande d'arrêt d'urgence"],0,"Voie d'insertion : je cède et je m'insère à la bonne vitesse."],
+ ["Autoroute et ville","Dans un tunnel éclairé, je dois :",["Éteindre mes feux","Allumer au minimum les feux de croisement","Allumer les feux de route"],1,"Feux de croisement obligatoires."],
+ ["Autoroute et ville","Au télépéage, la vitesse conseillée est d'environ :",["30 km/h","70 km/h","90 km/h"],0,"30 km/h, et je ne m'arrête pas."],
+ ["Autoroute et ville","Sur autoroute, faire demi-tour est :",["Autorisé par les refuges","Interdit et très dangereux","Autorisé la nuit"],1,"Interdit, les refuges ne servent qu'aux urgences."],
+
+ ["Usagers vulnérables","Un piéton s'engage sur le passage :",["Je m'arrête","Je klaxonne","Je passe derrière lui"],0,"Je m'arrête et je le laisse finir."],
+ ["Usagers vulnérables","Devant une école à l'heure de sortie, je :",["Ralentis fortement et je surveille","Klaxonne pour prévenir","Garde ma vitesse"],0,"Enfants = imprévisibles, je ralentis vraiment."],
+ ["Usagers vulnérables","Avant d'ouvrir ma portière en ville, je :",["Regarde dans le rétroviseur et par-dessus mon épaule","Ouvre vite","Allume les feux de détresse"],0,"Un cycliste peut arriver : je vérifie l'angle mort."],
+ ["Usagers vulnérables","Un deux-roues remonte les files :",["Il est en tort, je ne fais rien","Je vérifie avant de changer de file","Je le bloque"],1,"Je contrôle mes angles morts avant toute manœuvre."],
+ ["Usagers vulnérables","Une personne âgée traverse lentement :",["J'attends, même si le feu passe au vert","J'avance doucement pour la presser","Je klaxonne"],0,"Je la laisse terminer sa traversée."],
+ ["Usagers vulnérables","La distance latérale à laisser à un vélo hors agglomération est de :",["1 m","1,50 m","50 cm"],1,"1,5 m hors agglomération."],
+
+ ["Mécanique et sécurité","Un voyant rouge d'huile s'allume en roulant :",["Je continue jusqu'à la maison","Je m'arrête dès que possible","J'accélère"],1,"Rouge = arrêt immédiat, risque de casse moteur."],
+ ["Mécanique et sécurité","La profondeur minimale des sculptures d'un pneu est de :",["1 mm","1,6 mm","3 mm"],1,"1,6 mm, en dessous le pneu est mort."],
+ ["Mécanique et sécurité","Le gilet et le triangle sont :",["Facultatifs","Obligatoires dans le véhicule","Obligatoires seulement sur autoroute"],1,"Obligatoires, et le gilet se met avant de sortir."],
+ ["Mécanique et sécurité","Les feux de détresse servent à :",["Signaler un danger, une panne ou un freinage brutal","Stationner","Remercier un autre conducteur"],0,"C'est un signal de danger."],
+ ["Mécanique et sécurité","La ceinture est obligatoire :",["Seulement à l'avant","À toutes les places","Seulement sur autoroute"],1,"À toutes les places, à chaque trajet."],
+ ["Mécanique et sécurité","Je dois allumer mes feux de route :",["En agglomération éclairée","Hors agglomération, quand la route n'est pas éclairée et sans gêner personne","Dans le brouillard"],1,"Jamais en ville éclairée, ni quand je croise ou je suis."],
+
+ ["Divers","Le permis probatoire donne :",["6 points","12 points","4 points"],0,"6 points au départ, puis on gagne 2 points par an sans infraction."],
+ ["Divers","Tenir son téléphone en main au volant :",["Est interdit et sanctionné de 3 points","Est autorisé à l'arrêt au feu","Est autorisé en appel d'urgence"],0,"135 € d'amende et 3 points, même à l'arrêt moteur tournant."],
+ ["Divers","La limite d'alcool pour un conducteur probatoire est de :",["0,5 g/L","0,2 g/L","0,8 g/L"],1,"0,2 g/L, c'est-à-dire zéro verre."],
+ ["Divers","Le triangle est placé :",["À 30 m du véhicule","À environ 30 m, ou plus si la visibilité est réduite","Sur le toit"],1,"À 30 m minimum, jamais sur autoroute si c'est dangereux."],
+ ["Divers","Boire un café fort aide à :",["Éliminer l'alcool","Rien, seul le temps élimine l'alcool","Réduire les points"],1,"Aucun remède, seul le temps agit."],
+ ["Divers","En cas de panne sur autoroute, je sors :",["Par la portière côté circulation","Par la portière côté passager, gilet enfilé avant","Je reste dedans"],1,"Toujours du côté opposé à la circulation, gilet mis avant d'ouvrir."]
+];
+
+const state = {order:[], i:0, answers:[], mode:'exam', title:''};
+const app = document.getElementById('app');
+const store = {
+  get(){ try{ return JSON.parse(localStorage.getItem('codeErrs')||'[]'); }catch(e){ return [];} },
+  add(id){ const s=this.get(); s.push(id); localStorage.setItem('codeErrs', JSON.stringify(s.slice(-200))); },
+  clear(){ localStorage.removeItem('codeErrs'); }
+};
+const shuffle = a => a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);
+
+function home(){
+  const errs = store.get();
+  app.innerHTML = `
+    <div class="card">
+      <button class="primary" onclick="start('exam')">Examen blanc — 40 questions</button>
+      <button onclick="start('quick')">Série rapide — 10 questions</button>
+      <button onclick="start('errors')">Revoir mes erreurs (${errs.length})</button>
+    </div>
+    <div class="card">
+      <div class="list"><b>Themes :</b> ${[...new Set(Q.map(q=>q[0]))].join(' · ')}</div>
+    </div>
+    <div class="card">
+      <button onclick="if(confirm('Effacer les erreurs enregistrées ?')){store.clear();home();}">Effacer mes erreurs</button>
+    </div>`;
+}
+
+function start(mode){
+  let pool = Q.map((q,idx)=>({q,idx}));
+  if(mode==='errors'){
+    const ids = store.get();
+    pool = pool.filter(o=>ids.includes(o.idx));
+    if(!pool.length){ alert("Aucune erreur enregistrée pour le moment."); return; }
+  }
+  pool = shuffle(pool);
+  if(mode==='exam') pool = pool.slice(0,40);
+  if(mode==='quick') pool = pool.slice(0,10);
+  state.mode=mode; state.order=pool; state.i=0; state.answers=[];
+  question();
+}
+
+function question(){
+  const cur = state.order[state.i];
+  if(!cur){ return result(); }
+  const [theme,txt,opts,good,expl] = cur.q;
+  const pct = Math.round(100*state.i/state.order.length);
+  app.innerHTML = `
+    <div class="bar"><div style="width:${pct}%"></div></div>
+    <div class="meta"><span>Question ${state.i+1} / ${state.order.length}</span><span>${theme}</span></div>
+    <div class="card">
+      <div class="q">${txt}</div>
+      ${opts.map((o,k)=>`<button class="opt" id="o${k}" onclick="answer(${k})">${o}</button>`).join('')}
+      <div id="ex"></div>
+    </div>`;
+}
+
+function answer(k){
+  const cur = state.order[state.i];
+  const [theme,txt,opts,good,expl] = cur.q;
+  const ok = k===good;
+  state.answers.push({idx:cur.idx, ok, theme});
+  if(!ok) store.add(cur.idx);
+  document.querySelectorAll('.opt').forEach(b=>b.disabled=true);
+  document.getElementById('o'+good).classList.add('good');
+  if(!ok) document.getElementById('o'+k).classList.add('bad');
+  document.getElementById('ex').innerHTML = `<div class="explain"><b>${ok?'Bonne réponse':'Raté'}.</b> ${expl}</div>
+    <button class="primary" style="margin-top:12px" onclick="next()">Suivant</button>`;
+}
+
+function next(){ state.i++; question(); }
+
+function result(){
+  const total = state.answers.length;
+  const good = state.answers.filter(a=>a.ok).length;
+  const passed = state.mode==='exam' ? good>=35 : good>=Math.ceil(total*0.85);
+  const pct = Math.round(100*good/total);
+  const weak = {};
+  state.answers.filter(a=>!a.ok).forEach(a=>weak[a.theme]=(weak[a.theme]||0)+1);
+  const themes = Object.entries(weak).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`${t} (${n})`).join(', ') || 'aucun';
+  app.innerHTML = `
+    <div class="card">
+      <div class="score ${passed?'ok':'ko'}">${good} / ${total}</div>
+      <div class="sub" style="text-align:center">${pct}% · ${passed?'Reçu':'Pas encore'}</div>
+      <div class="list" style="margin-top:12px"><b>À revoir :</b> ${themes}</div>
+    </div>
+    <div class="card">
+      <button class="primary" onclick="start('${state.mode==='errors'?'errors':state.mode}')">Refaire</button>
+      <button onclick="home()">Retour au menu</button>
+    </div>`;
+}
+
+home();
+</script>
+</body>
+</html>
