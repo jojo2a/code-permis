@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Harpon Run — plateforme</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+  html,body{height:100%;overflow:hidden;background:#7ec8e3;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+  #c{display:block;width:100%;height:100%;touch-action:none}
+  .hud{position:fixed;top:0;left:0;right:0;padding:12px 16px;display:flex;justify-content:space-between;
+       color:#08222f;font-weight:800;font-size:15px;pointer-events:none;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+  .ctl{position:fixed;bottom:0;left:0;right:0;height:130px;display:flex;justify-content:space-between;
+       padding:0 18px 18px;pointer-events:none}
+  .pad{display:flex;gap:14px;pointer-events:auto}
+  .btn{width:74px;height:74px;border-radius:50%;background:rgba(255,255,255,.55);border:2px solid rgba(8,34,47,.25);
+       display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#08222f;
+       backdrop-filter:blur(4px);align-self:flex-end}
+  .btn:active{background:rgba(255,255,255,.85);transform:scale(.95)}
+  .btn.jump{background:rgba(34,197,94,.75);color:#fff;width:86px;height:86px;font-size:15px}
+  #msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
+       background:rgba(8,34,47,.86);color:#fff;text-align:center;padding:26px;backdrop-filter:blur(5px)}
+  #msg h1{font-size:28px;margin-bottom:8px}
+  #msg p{color:#bfe3f2;font-size:14px;margin-bottom:22px;line-height:1.6}
+  #msg button{background:#22c55e;color:#04220f;border:0;padding:15px 36px;border-radius:12px;font:inherit;font-weight:800;font-size:16px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>● <span id="coins">0</span></div>
+  <div>▲ <span id="lives">3</span></div>
+  <div id="dist">0 m</div>
+</div>
+<div class="ctl">
+  <div class="pad">
+    <div class="btn" id="left">◀</div>
+    <div class="btn" id="right">▶</div>
+  </div>
+  <div class="pad">
+    <div class="btn jump" id="jump">SAUT</div>
+  </div>
+</div>
+<div id="msg">
+  <h1>Harpon Run</h1>
+  <p>◀ ▶ pour courir, SAUT pour sauter. Ramasse les pièces, évite les méduses, touche le drapeau.</p>
+  <button id="go">Jouer</button>
+</div>
+<script>
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+let W=0,H=0,DPR=1,TS=36;
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  W=cv.clientWidth; H=cv.clientHeight;
+  cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+  TS = Math.max(28, Math.min(42, Math.round(H/13)));
+}
+window.addEventListener('resize', ()=>{resize(); if(!G.run) draw();});
+
+/* ---------- génération du niveau (déterministe) ---------- */
+let seed=1337;
+function rnd(){ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; }
+function ri(a,b){ return a+Math.floor(rnd()*(b-a+1)); }
+
+const ROWS=15, COLS=170;
+let MAP=[], coins=[], enemies=[], flag=null, holes=[];
+
+function buildLevel(){
+  seed=1337;
+  MAP=Array.from({length:ROWS},()=>Array(COLS).fill(' '));
+  coins=[]; enemies=[]; holes=[];
+  // sol
+  for(let x=0;x<COLS;x++){
+    let solid=true;
+    if(x>14 && x<COLS-10){
+      for(const [a,b] of holes) if(x>=a&&x<=b) solid=false;
+    }
+    if(solid) for(let y=ROWS-3;y<ROWS;y++) MAP[y][x]='#';
+  }
+  // trous
+  let hx=20;
+  while(hx<COLS-24){
+    const w=ri(2,4); holes.push([hx,hx+w]); hx+=w+ri(9,14);
+  }
+  // recalcul du sol avec les trous
+  for(let x=0;x<COLS;x++){
+    for(let y=0;y<ROWS;y++) if(MAP[y][x]==='#') MAP[y][x]=' ';
+    const inHole = holes.some(([a,b])=>x>=a&&x<=b);
+    if(!inHole) for(let y=ROWS-3;y<ROWS;y++) MAP[y][x]='#';
+  }
+  // plateformes flottantes
+  for(let x=16;x<COLS-18;x+=ri(7,11)){
+    const len=ri(3,5), y=ri(6,10);
+    for(let i=0;i<len;i++) if(MAP[y][x+i]===' ') MAP[y][x+i]='=';
+    for(let i=1;i<len-1;i+=2) coins.push({x:x+i, y:y-1});
+    if(rnd()<0.55) enemies.push({x:x+len/2, y:y-1, dir:1, w:1});
+  }
+  // pièces et méduses sur le sol
+  for(let x=12;x<COLS-20;x+=ri(4,8)){
+    const inHole = holes.some(([a,b])=>x>=a&&x<=b);
+    if(inHole) continue;
+    if(rnd()<0.6) coins.push({x, y:ROWS-4});
+    if(rnd()<0.22) enemies.push({x, y:ROWS-4, dir:rnd()<0.5?1:-1, w:1});
+  }
+  // méduses volantes
+  for(let x=30;x<COLS-20;x+=ri(14,22)) enemies.push({x, y:ri(4,9), dir:-1, w:1, fly:true});
+  flag={x:COLS-8, y:ROWS-3};
+}
+
+function solidAt(tx,ty){
+  if(ty<0||ty>=ROWS) return false;
+  if(tx<0||tx>=COLS) return true;
+  const ch=MAP[ty][tx];
+  return ch==='#'||ch==='=';
+}
+
+/* ---------- jeu ---------- */
+const G={run:false, cam:0, coins:0, lives:3, t:0, won:false};
+const P={x:0,y:0,vx:0,vy:0,w:0.8,h:1.1,onGround:false,face:1,start:true};
+const keys={left:false,right:false,jump:false};
+
+function reset(){
+  P.x=3; P.y=ROWS-4.2; P.vx=0; P.vy=0; P.onGround=false; P.face=1;
+  P.w=0.8; P.h=1.1;
+  coins.forEach(c=>c.taken=false);
+  enemies.forEach(e=>{ e.dead=false; e.bx=e.x; e.t=Math.random()*6; });
+  G.coins=0; G.lives=3; G.cam=0; G.t=0; G.won=false;
+  document.getElementById('coins').textContent='0';
+  document.getElementById('lives').textContent='3';
+}
+
+function start(){
+  resize(); buildLevel(); reset();
+  G.run=true;
+  document.getElementById('msg').style.display='none';
+  last=performance.now(); requestAnimationFrame(loop);
+}
+
+let last=0;
+function loop(now){
+  const dt=Math.min(0.033,(now-last)/1000); last=now;
+  if(!G.run) return;
+  update(dt); draw();
+  requestAnimationFrame(loop);
+}
+
+function update(dt){
+  const acc=38, maxv=7.2, fric=0.82, grav=42, jump=-13.2;
+  if(keys.left){ P.vx-=acc*dt; P.face=-1; }
+  if(keys.right){ P.vx+=acc*dt; P.face=1; }
+  if(!keys.left && !keys.right) P.vx*=Math.pow(fric, dt*60);
+  P.vx=Math.max(-maxv,Math.min(maxv,P.vx));
+  if(keys.jump && P.onGround){ P.vy=jump; P.onGround=false; }
+  P.vy+=grav*dt;
+  if(P.vy>26) P.vy=26;
+
+  moveX(P.vx*dt); moveY(P.vy*dt);
+
+  // chute dans un trou
+  if(P.y*TS > (ROWS+2)*TS){ loseLife(); return; }
+
+  // caméra
+  const target=P.x*TS - W*0.38;
+  G.cam += (target-G.cam)*Math.min(1,dt*8);
+  G.cam=Math.max(0,Math.min(COLS*TS-W, G.cam));
+
+  // pièces
+  coins.forEach(c=>{
+    if(c.taken) return;
+    if(Math.abs(c.x-P.x)<0.75 && Math.abs(c.y-P.y)<0.9){
+      c.taken=true; G.coins++; document.getElementById('coins').textContent=G.coins;
+    }
+  });
+
+  // ennemis
+  enemies.forEach(e=>{
+    e.t+=dt;
+    if(e.fly){ e.x=e.bx+Math.sin(e.t*1.2)*2.2; e.y0=e.y; }
+    else {
+      e.x += e.dir*2.1*dt;
+      const ax=Math.round(e.x), ay=Math.round(e.y+1);
+      if(!solidAt(ax+ (e.dir>0?1:-1), ay)) e.dir*=-1;
+      e.y = e.y;
+    }
+    if(!e.dead && Math.abs(e.x-P.x)<0.85 && Math.abs(e.y-P.y)<0.95){
+      if(!e.fly && P.vy>6 && P.y < e.y-0.35){          // on saute sur la méduse
+        e.dead=true; P.vy=-9;
+      } else { loseLife(); }
+    }
+  });
+
+  // drapeau
+  if(flag && Math.abs(flag.x-P.x)<0.9 && Math.abs(flag.y-P.y)<1.6) win();
+
+  document.getElementById('dist').textContent=Math.round(P.x*0.6)+' m';
+}
+
+function collides(){
+  const w=P.w/2, eps=0.001;
+  const x0=Math.floor(P.x-w+eps), x1=Math.floor(P.x+w-eps);
+  const y0=Math.floor(P.y-P.h+eps), y1=Math.floor(P.y-eps);
+  for(let ty=y0;ty<=y1;ty++) for(let tx=x0;tx<=x1;tx++) if(solidAt(tx,ty)) return true;
+  return false;
+}
+
+function moveX(dx){
+  P.x+=dx;
+  if(collides()){ P.x-=dx; P.vx=0; }
+}
+
+function moveY(dy){
+  P.y+=dy;
+  if(collides()){
+    P.y-=dy;
+    if(dy>0) P.onGround=true;
+    P.vy=0;
+  } else if(dy>0){ P.onGround=false; }
+}
+
+function loseLife(){
+  G.lives--; document.getElementById('lives').textContent=G.lives;
+  if(G.lives<=0){ over(false); return; }
+  P.x=Math.max(2,P.x-2); P.y=ROWS-4.2; P.vx=0; P.vy=0;
+  enemies.forEach(e=>{ if(!e.fly) e.x=e.bx; });
+}
+
+function win(){ G.won=true; over(true); }
+
+function over(won){
+  G.run=false;
+  const m=document.getElementById('msg');
+  m.style.display='flex';
+  m.querySelector('h1').textContent = won ? 'Niveau terminé !' : 'Perdu';
+  m.querySelector('p').innerHTML = (won?'Bravo. ':'') + 'Pièces : '+G.coins+' · Distance : '+Math.round(P.x*0.6)+' m';
+  m.querySelector('button').textContent='Rejouer';
+}
+
+/* ---------- rendu ---------- */
+function draw(){
+  // ciel
+  const sky=ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,'#8fd6ef'); sky.addColorStop(.6,'#5fb6da'); sky.addColorStop(1,'#2f8ab3');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+
+  // montagnes (parallaxe)
+  ctx.fillStyle='rgba(20,80,110,.35)';
+  for(let i=0;i<10;i++){
+    const bx=((i*420 - G.cam*0.25)%(W+900))-200;
+    ctx.beginPath(); ctx.moveTo(bx,H*0.72); ctx.lineTo(bx+200,H*0.36); ctx.lineTo(bx+400,H*0.72); ctx.fill();
+  }
+  // mer (parallaxe lente)
+  ctx.fillStyle='rgba(12,60,90,.28)';
+  for(let i=0;i<12;i++){
+    const bx=((i*260 - G.cam*0.45)%(W+600))-150;
+    ctx.beginPath(); ctx.ellipse(bx,H*0.8,170,60,0,0,7); ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(-G.cam,0);
+
+  const x0=Math.floor(G.cam/TS)-1, x1=x0+Math.ceil(W/TS)+2;
+
+  // tuiles
+  for(let tx=x0;tx<=x1;tx++){
+    for(let ty=0;ty<ROWS;ty++){
+      const ch=MAP[ty]?.[tx];
+      if(ch==='#'){ tile(tx,ty,'#5b4425','#7a5c30',false, ty===Math.round(ROWS-3)); }
+      if(ch==='='){ tile(tx,ty,'#9ad3a0','#c7ecc9',true); }
+    }
+  }
+
+  // pièces
+  coins.forEach(c=>{
+    if(c.taken) return;
+    const cx=c.x*TS+TS/2, cy=c.y*TS+TS/2+Math.sin(G.t*3+c.x)*2;
+    ctx.fillStyle='#ffd83d'; ctx.beginPath(); ctx.arc(cx,cy,TS*0.22,0,7); ctx.fill();
+    ctx.fillStyle='#b8860b'; ctx.beginPath(); ctx.arc(cx,cy,TS*0.11,0,7); ctx.fill();
+  });
+
+  // drapeau
+  if(flag){
+    const fx=flag.x*TS, fy=flag.y*TS;
+    ctx.fillStyle='#e2e8ee'; ctx.fillRect(fx+TS*0.4,fy-TS*3,3,TS*3);
+    ctx.fillStyle='#ef4444';
+    ctx.beginPath(); ctx.moveTo(fx+TS*0.4+3,fy-TS*3); ctx.lineTo(fx+TS*1.6,fy-TS*2.6); ctx.lineTo(fx+TS*0.4+3,fy-TS*2.2); ctx.fill();
+  }
+
+  // ennemis
+  enemies.forEach(e=>{
+    if(e.dead) return;
+    const ex=e.x*TS+TS/2, ey=e.y*TS+TS*0.1, r=TS*0.32;
+    const bob=Math.sin(G.t*4+e.bx)*3;
+    ctx.fillStyle='rgba(216,120,220,.9)';
+    ctx.beginPath(); ctx.arc(ex,ey+r+bob,r,Math.PI,0); ctx.fill();
+    ctx.beginPath(); ctx.arc(ex,ey+r+bob,r*0.8,0,Math.PI*2); ctx.fill();
+    for(let i=-2;i<=2;i++){
+      ctx.strokeStyle='rgba(216,120,220,.75)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(ex+i*r*0.4, ey+r+bob+r*0.7);
+      ctx.lineTo(ex+i*r*0.4+Math.sin(G.t*3+i)*3, ey+r+bob+r*0.7+TS*0.32); ctx.stroke();
+    }
+    ctx.fillStyle='#2b0f33';
+    ctx.beginPath(); ctx.arc(ex-r*0.3,ey+r*0.7+bob,r*0.12,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(ex+r*0.3,ey+r*0.7+bob,r*0.12,0,7); ctx.fill();
+  });
+
+  // joueur
+  drawPlayer(P.x*TS, P.y*TS);
+
+  ctx.restore();
+
+  // bulles décor
+  G.t+=0.016;
+}
+
+function tile(tx,ty,c1,c2,thin,grass){
+  const x=tx*TS, y=ty*TS;
+  ctx.fillStyle=c1; ctx.fillRect(x,y,TS,TS);
+  if(grass){ ctx.fillStyle='#8fbf5a'; ctx.fillRect(x,y,TS,Math.max(5,TS*0.22)); }
+  ctx.fillStyle=c2; ctx.fillRect(x,y,TS,thin?Math.max(3,TS*0.18):4);
+  if(!thin){ ctx.strokeStyle='rgba(0,0,0,.12)'; ctx.lineWidth=1; ctx.strokeRect(x+.5,y+.5,TS-1,TS-1); }
+}
+
+function drawPlayer(px,py){
+  const w=P.w*TS, h=P.h*TS;
+  const x=px-w/2, y=py-h;
+  const run=Math.abs(P.vx)>0.6 && P.onGround;
+  const bob=run?Math.sin(G.t*18)*1.5:0;
+  // ombre
+  ctx.fillStyle='rgba(0,0,0,.20)';
+  ctx.beginPath(); ctx.ellipse(px, py+2, w*0.5, 4,0,0,7); ctx.fill();
+
+  // jambes / palmes
+  ctx.fillStyle='#f97316';
+  const swing=run?Math.sin(G.t*18)*w*0.18:0;
+  ctx.beginPath(); ctx.ellipse(x+w*0.28+swing, y+h*0.95, w*0.20, h*0.10, 0,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+w*0.72-swing, y+h*0.95, w*0.20, h*0.10, 0,0,7); ctx.fill();
+
+  // corps (combinaison)
+  ctx.fillStyle='#1d8fb0';
+  roundRect(x+w*0.1, y+h*0.36+bob, w*0.8, h*0.55, w*0.16); ctx.fill();
+  ctx.fillStyle='#facc15';
+  roundRect(x+w*0.12, y+h*0.50+bob, w*0.76, h*0.07, 2); ctx.fill();
+
+  // bras
+  ctx.fillStyle='#187a97';
+  ctx.beginPath(); ctx.ellipse(x+w*0.06, y+h*0.58+bob, w*0.11, h*0.14, 0.3,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+w*0.94, y+h*0.58+bob, w*0.11, h*0.14,-0.3,0,7); ctx.fill();
+
+  // tête
+  ctx.fillStyle='#f2c9a0';
+  ctx.beginPath(); ctx.arc(px, y+h*0.24+bob, w*0.34,0,7); ctx.fill();
+  // cagoule
+  ctx.fillStyle='#1d8fb0';
+  ctx.beginPath(); ctx.arc(px, y+h*0.22+bob, w*0.34, Math.PI*1.05, Math.PI*1.95); ctx.fill();
+  // masque
+  ctx.fillStyle='#bae6fd';
+  roundRect(px+P.face*w*0.02 - w*0.24, y+h*0.14+bob, w*0.48, h*0.19, w*0.10); ctx.fill();
+  ctx.strokeStyle='#0b3145'; ctx.lineWidth=2; ctx.stroke();
+  // yeux
+  ctx.fillStyle='#08222f';
+  ctx.beginPath(); ctx.arc(px+P.face*w*0.14, y+h*0.21+bob, w*0.055,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(px-P.face*w*0.02, y+h*0.21+bob, w*0.055,0,7); ctx.fill();
+  // tuba
+  ctx.strokeStyle='#facc15'; ctx.lineWidth=3.5; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(px+P.face*w*0.24, y+h*0.16+bob);
+  ctx.lineTo(px+P.face*w*0.34, y+h*0.06+bob);
+  ctx.lineTo(px+P.face*w*0.30, y-h*0.04+bob);
+  ctx.stroke();
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+/* ---------- contrôles ---------- */
+function bind(el, key){
+  const on=e=>{ keys[key]=true; e.preventDefault(); };
+  const off=e=>{ keys[key]=false; e.preventDefault(); };
+  el.addEventListener('pointerdown',on,{passive:false});
+  el.addEventListener('pointerup',off);
+  el.addEventListener('pointercancel',off);
+  el.addEventListener('pointerleave',off);
+}
+bind(document.getElementById('left'),'left');
+bind(document.getElementById('right'),'right');
+bind(document.getElementById('jump'),'jump');
+
+window.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'||e.key==='q'||e.key==='a') keys.left=true;
+  if(e.key==='ArrowRight'||e.key==='d') keys.right=true;
+  if(e.key===' '||e.key==='ArrowUp'||e.key==='w'||e.key==='z') keys.jump=true;
+});
+window.addEventListener('keyup',e=>{
+  if(e.key==='ArrowLeft'||e.key==='q'||e.key==='a') keys.left=false;
+  if(e.key==='ArrowRight'||e.key==='d') keys.right=false;
+  if(e.key===' '||e.key==='ArrowUp'||e.key==='w'||e.key==='z') keys.jump=false;
+});
+
+document.getElementById('go').addEventListener('click', start);
+
+// écran d'accueil
+resize(); buildLevel(); reset(); G.cam=0; draw();
+</script>
+</body>
+</html>
