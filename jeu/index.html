@@ -47,7 +47,7 @@ function resize(){
 window.addEventListener('resize', resize);
 
 const S = {
-  run:false, score:0, oxy:1, t:0, fish:[], harpoons:[], bubbles:[],
+  run:false, score:0, oxy:1, t:0, fish:[], harpoons:[], bubbles:[], px:0, grab:false,
   best: +(localStorage.getItem('harponBest')||0)
 };
 document.getElementById('best').textContent = S.best;
@@ -73,7 +73,7 @@ function spawn(){
 
 function start(){
   resize();
-  S.run=true; S.score=0; S.oxy=1; S.t=0; S.fish=[]; S.harpoons=[];
+  S.run=true; S.score=0; S.oxy=1; S.t=0; S.fish=[]; S.harpoons=[]; S.px=W/2; S.grab=false;
   document.getElementById('score').textContent='0';
   document.getElementById('over').style.display='none';
   S.bubbles=Array.from({length:26},()=>({x:rnd(0,W),y:rnd(0,H),r:rnd(1,4),v:rnd(8,26)}));
@@ -94,9 +94,11 @@ function loop(now){
 
   // poissons
   spawnT -= dt;
-  if(spawnT<=0 && S.fish.length<7){ spawn(); spawnT = rnd(0.55,1.25); }
+  const cap = Math.min(11, 6 + Math.floor(S.t/25));
+  if(spawnT<=0 && S.fish.length<cap){ spawn(); spawnT = Math.max(0.34, rnd(0.55,1.25) - S.t*0.006); }
+  const boost = 1 + Math.min(1.1, S.t/70);
   S.fish.forEach(f=>{
-    f.x += f.vx*dt;
+    f.x += f.vx*boost*dt;
     f.phase += dt*6;
     f.y += Math.sin(f.phase)*0.35;
   });
@@ -143,7 +145,7 @@ function draw(){
   });
 
   // chasseur, en bas au centre
-  const px=W/2, py=H-84;
+  const px=S.px, py=H-84;
   ctx.save();
   ctx.translate(px,py);
   ctx.scale(1.15,1.15);
@@ -171,7 +173,7 @@ function drawFish(f){
 
 function shoot(mx,my){
   if(!S.run) return;
-  const px=W/2, py=H-52;
+  const px=S.px, py=H-92;
   S.harpoons.push({x0:px,y0:py,x1:mx,y1:my,p:0});
   // test de collision sur le segment
   let hit=null;
@@ -221,17 +223,36 @@ function gameOver(){
   document.getElementById('over').style.display='flex';
 }
 
+function pos(e){ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+
 cv.addEventListener('pointerdown', e=>{
-  const r=cv.getBoundingClientRect();
-  shoot(e.clientX-r.left, e.clientY-r.top);
-});
+  if(!S.run) return;
+  const p = pos(e);
+  const dyDiver = H-84, onDiver = Math.hypot(p.x-S.px, p.y-dyDiver) < 90;
+  if(onDiver || p.y > H-110){            // on attrape le chasseur
+    S.grab = true; S.px = Math.max(34, Math.min(W-34, p.x));
+  } else {
+    shoot(p.x, p.y);
+  }
+  e.preventDefault();
+}, {passive:false});
+
+cv.addEventListener('pointermove', e=>{
+  if(!S.grab || !S.run) return;
+  const p = pos(e);
+  S.px = Math.max(34, Math.min(W-34, p.x));
+  e.preventDefault();
+}, {passive:false});
+
+cv.addEventListener('pointerup', ()=>{ S.grab=false; });
+cv.addEventListener('pointercancel', ()=>{ S.grab=false; });
 
 resize();
 document.getElementById('fscore').textContent='0';
 document.getElementById('over').style.display='flex';
 document.querySelector('#over button').textContent='Jouer';
 document.querySelector('#over h1').textContent='Harpon';
-document.getElementById('msg').textContent='Tape sur les poissons. Chaque poisson te rend de l\'air.';
+document.getElementById('msg').textContent='Glisse le chasseur pour le déplacer, tape ailleurs pour tirer. Chaque poisson te rend de l\'air.';
 </script>
 </body>
 </html>
