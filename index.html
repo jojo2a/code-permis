@@ -25,6 +25,8 @@
   .list{font-size:13px;line-height:1.5;color:var(--dim)}
   .bar{height:6px;background:#242a35;border-radius:3px;overflow:hidden;margin-bottom:14px}
   .bar div{height:100%;background:var(--acc);width:0;transition:width .2s}
+  .sign{display:flex;justify-content:center;margin:4px 0 16px}
+  .sign svg{width:130px;height:130px;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
 </style>
 </head>
 <body>
@@ -106,6 +108,54 @@ const Q = [
  ["Divers","En cas de panne sur autoroute, je sors :",["Par la portière côté circulation","Par la portière côté passager, gilet enfilé avant","Je reste dedans"],1,"Toujours du côté opposé à la circulation, gilet mis avant d'ouvrir."]
 ];
 
+
+/* ---------- panneaux dessinés en SVG ---------- */
+function svgInner(name){
+  const R='#d92b2b', W='#ffffff', K='#111111', B='#1b5fb5';
+  const tri = (sym, col=R) => `<svg viewBox="0 0 100 100"><polygon points="50,6 95,88 5,88" fill="${col}"/><polygon points="50,20 84,82 16,82" fill="${W}"/>${sym}</svg>`;
+  const inter = (sym) => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="${R}"/><circle cx="50" cy="50" r="34" fill="${W}"/>${sym}</svg>`;
+  const obli = (sym) => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="${B}"/>${sym}</svg>`;
+  const carre = (sym) => `<svg viewBox="0 0 100 100"><rect x="8" y="8" width="84" height="84" rx="6" fill="${B}"/>${sym}</svg>`;
+  const ped = `<g fill="${K}"><circle cx="52" cy="42" r="5"/><rect x="48" y="48" width="7" height="18" rx="3"/><rect x="42" y="64" width="6" height="16" rx="3" transform="rotate(14 45 72)"/><rect x="55" y="64" width="6" height="16" rx="3" transform="rotate(-12 58 72)"/></g>`;
+  const cars = `<g fill="${K}"><rect x="30" y="52" width="40" height="14" rx="4"/><rect x="38" y="44" width="24" height="10" rx="4"/><circle cx="38" cy="68" r="5"/><circle cx="62" cy="68" r="5"/></g>`;
+  const slide = `<g stroke="${K}" stroke-width="5" fill="none"><path d="M30 62h34l-8-8"/><path d="M30 74h40"/></g><g fill="${K}"><circle cx="66" cy="40" r="4"/></g>`;
+  const num = (t, sub) => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="${R}"/><circle cx="50" cy="50" r="34" fill="${W}"/><text x="50" y="${sub?58:64}" font-size="${sub?34:44}" font-weight="800" text-anchor="middle" fill="${K}" font-family="Arial">${t}</text></svg>`;
+  switch(name){
+    case 'stop': return `<svg viewBox="0 0 100 100"><polygon points="32,6 68,6 94,32 94,68 68,94 32,94 6,68 6,32" fill="${R}" stroke="#fff" stroke-width="5"/><text x="50" y="60" font-size="26" font-weight="800" text-anchor="middle" fill="#fff" font-family="Arial">STOP</text></svg>`;
+    case 'cedez': return `<svg viewBox="0 0 100 100"><polygon points="50,92 95,12 5,12" fill="${R}"/><polygon points="50,76 82,22 18,22" fill="${W}"/></svg>`;
+    case 'sens-interdit': return inter(`<rect x="22" y="44" width="56" height="12" fill="${R}"/>`);
+    case 'danger-pieton': return tri(ped);
+    case 'danger-glissant': return tri(slide);
+    case 'danger-virages': return tri(`<path d="M40 80 C40 62 62 62 62 44 C62 34 52 30 46 34" stroke="${K}" stroke-width="7" fill="none" stroke-linecap="round"/>`);
+    case 'danger-carrefour': return tri(`<g stroke="${K}" stroke-width="7" stroke-linecap="round"><path d="M50 78V40"/><path d="M28 56h44"/></g>`);
+    case 'obligation-droite': return obli(`<path d="M50 78V34M50 34l-12 12M50 34l12 12" stroke="#fff" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
+    case 'rond-point': return obli(`<g fill="none" stroke="#fff" stroke-width="7"><circle cx="50" cy="50" r="20"/><path d="M50 22l-9 9M50 22l9 9"/></g>`);
+    case 'passage-pieton': return carre(`<polygon points="50,24 78,76 22,76" fill="#fff"/>${ped.replace(/fill="\#111111"/g,'fill="#111"')}`);
+    case 'stationnement-interdit': return inter(`<text x="50" y="64" font-size="42" font-weight="800" text-anchor="middle" fill="${K}" font-family="Arial">P</text><rect x="24" y="44" width="52" height="10" fill="${R}" transform="rotate(-45 50 50)"/>`);
+    case 'vitesse-50': return num('50');
+    case 'vitesse-30': return num('30');
+    case 'fin-interdiction': return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="${W}" stroke="#bbb" stroke-width="3"/><circle cx="50" cy="50" r="34" fill="${W}"/></svg>`;
+    case 'croisement': return tri(`<g stroke="${K}" stroke-width="6" stroke-linecap="round"><path d="M50 78V42"/><path d="M30 58h40"/></g>`);
+    case 'feu': return `<svg viewBox="0 0 100 100"><rect x="32" y="8" width="36" height="84" rx="10" fill="#222"/><circle cx="50" cy="28" r="11" fill="#e11d48"/><circle cx="50" cy="50" r="11" fill="#f59e0b"/><circle cx="50" cy="72" r="11" fill="#22c55e" opacity=".35"/></svg>`;
+    default: return '';
+  }
+}
+
+const QSIGN = [
+ ["Panneaux","Que signifie ce panneau ?","stop",["Arrêt obligatoire, même si la route est vide","Cédez le passage","Fin de priorité"],0,"STOP : arrêt complet, roues immobilisées, à la limite de la chaussée."],
+ ["Panneaux","Que signifie ce panneau ?","cedez",["Je cède le passage sans forcément m'arrêter","Obligation de m'arrêter","Route prioritaire"],0,"Cédez le passage : je laisse passer, l'arrêt n'est obligatoire que si du trafic arrive."],
+ ["Panneaux","Que signifie ce panneau ?","sens-interdit",["Sens interdit dans ce sens","Circulation interdite aux deux sens","Stationnement interdit"],0,"Sens interdit : je ne peux pas entrer dans cette voie."],
+ ["Panneaux","Que signifie ce panneau ?","danger-pieton",["Passage piéton à proximité","Passage piéton où je suis prioritaire","Interdiction aux piétons"],0,"Triangle = danger : un passage piéton approche, je ralentis."],
+ ["Panneaux","Que signifie ce panneau ?","danger-glissant",["Chaussée glissante","Virage dangereux","Chaussée déformée"],0,"Je ralentis et j'augmente les distances."],
+ ["Panneaux","Que signifie ce panneau ?","danger-virages",["Succession de virages, le premier à droite","Virage unique à gauche","Route sinueuse sur 5 km"],0,"Le tracé indique le sens du premier virage."],
+ ["Panneaux","Que signifie ce panneau ?","obligation-droite",["Obligation de tourner à droite","Sens unique à droite","Voie réservée"],0,"Rond bleu = obligation : je dois aller à droite."],
+ ["Panneaux","Que signifie ce panneau ?","rond-point",["Sens giratoire obligatoire","Rond-point où j'ai la priorité","Fin de rond-point"],0,"Je contourne par la droite, et je cède à ceux qui sont déjà sur l'anneau."],
+ ["Panneaux","Que signifie ce panneau ?","passage-pieton",["Passage piéton : les piétons sont prioritaires","Interdiction de traverser","Passage pour cyclistes"],0,"Carré bleu = indication, le piéton engage et je m'arrête."],
+ ["Panneaux","Que signifie ce panneau ?","stationnement-interdit",["Stationnement interdit","Arrêt interdit","Parking payant"],0,"Interdiction de stationner, l'arrêt reste possible dans certains cas."],
+ ["Panneaux","Que signifie ce panneau ?","vitesse-50",["Vitesse maximale 50 km/h","Vitesse conseillée 50","Fin de limitation à 50"],0,"Limitation réelle, sanctionnée au-delà."],
+ ["Panneaux","Quel feu autorise le passage ?","feu",["Le vert","Le orange","Le rouge"],0,"Le orange impose l'arrêt sauf si je ne peux plus m'arrêter en sécurité."]
+];
+
 const state = {order:[], i:0, answers:[], mode:'exam', title:''};
 const app = document.getElementById('app');
 const store = {
@@ -113,6 +163,12 @@ const store = {
   add(id){ const s=this.get(); s.push(id); localStorage.setItem('codeErrs', JSON.stringify(s.slice(-200))); },
   clear(){ localStorage.removeItem('codeErrs'); }
 };
+function norm(q){
+  if(typeof q[2]==='string' && q[2].length<20 && !q[2].includes(' ')){
+    return {theme:q[0], txt:q[1], sign:q[2], opts:q[3], good:q[4], expl:q[5]};
+  }
+  return {theme:q[0], txt:q[1], sign:null, opts:q[2], good:q[3], expl:q[4]};
+}
 const shuffle = a => a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);
 
 function home(){
@@ -121,6 +177,7 @@ function home(){
     <div class="card">
       <button class="primary" onclick="start('exam')">Examen blanc — 40 questions</button>
       <button onclick="start('quick')">Série rapide — 10 questions</button>
+      <button onclick="start('signs')">Panneaux illustrés — 12 questions</button>
       <button onclick="start('errors')">Revoir mes erreurs (${errs.length})</button>
     </div>
     <div class="card">
@@ -132,14 +189,15 @@ function home(){
 }
 
 function start(mode){
-  let pool = Q.map((q,idx)=>({q,idx}));
+  let pool = (mode==='signs' ? QSIGN : Q).map((q,idx)=>({q,idx}));
   if(mode==='errors'){
     const ids = store.get();
     pool = pool.filter(o=>ids.includes(o.idx));
     if(!pool.length){ alert("Aucune erreur enregistrée pour le moment."); return; }
   }
   pool = shuffle(pool);
-  if(mode==='exam') pool = pool.slice(0,40);
+  if(mode==='exam') pool = shuffle(Q.map((q,idx)=>({q,idx}))).slice(0,40);
+  if(mode==='signs') pool = shuffle(QSIGN.map((q,idx)=>({q,idx})));
   if(mode==='quick') pool = pool.slice(0,10);
   state.mode=mode; state.order=pool; state.i=0; state.answers=[];
   question();
@@ -148,12 +206,13 @@ function start(mode){
 function question(){
   const cur = state.order[state.i];
   if(!cur){ return result(); }
-  const [theme,txt,opts,good,expl] = cur.q;
+  const {theme,txt,opts,good,expl,sign} = norm(cur.q);
   const pct = Math.round(100*state.i/state.order.length);
   app.innerHTML = `
     <div class="bar"><div style="width:${pct}%"></div></div>
     <div class="meta"><span>Question ${state.i+1} / ${state.order.length}</span><span>${theme}</span></div>
     <div class="card">
+      ${sign?`<div class="sign">${svgInner(sign)}</div>`:''}
       <div class="q">${txt}</div>
       ${opts.map((o,k)=>`<button class="opt" id="o${k}" onclick="answer(${k})">${o}</button>`).join('')}
       <div id="ex"></div>
@@ -162,7 +221,7 @@ function question(){
 
 function answer(k){
   const cur = state.order[state.i];
-  const [theme,txt,opts,good,expl] = cur.q;
+  const {theme,txt,opts,good,expl,sign} = norm(cur.q);
   const ok = k===good;
   state.answers.push({idx:cur.idx, ok, theme});
   if(!ok) store.add(cur.idx);
